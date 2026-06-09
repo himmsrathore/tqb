@@ -61,8 +61,8 @@ selected_channels = st.sidebar.multiselect(
 
 st.sidebar.markdown("---")
 st.sidebar.markdown(
-    "**Format:**\n```\nQuestion | A | B | C | D | 2\n```\n"
-    "Last column = answer (1–4 or A–D).\n"
+    "**With answer:**\n```\nQuestion | A | B | C | D | 2\n```\n"
+    "**Without answer** (tab-separated):\n```\nQuestion\tA\tB\tC\tD\n```\n"
     "One question per line."
 )
 
@@ -72,11 +72,13 @@ col_input, col_preview = st.columns([1, 1], gap="large")
 with col_input:
     st.subheader("📋 Paste Questions")
     raw_text = st.text_area(
-        label="Questions (pipe | separated)",
+        label="Questions",
         height=320,
         placeholder=(
-            "India's capital city? | Mumbai | Delhi | Chennai | Kolkata | 2\n"
-            "Speed of light? | 3×10⁸ m/s | 3×10⁶ m/s | 3×10⁴ m/s | 3×10² m/s | 1\n"
+            "With answer (pipe):\n"
+            "India's capital? | Mumbai | Delhi | Chennai | Kolkata | 2\n\n"
+            "Without answer (tab):\n"
+            "पहली रेल किनके बीच चली?\tदिल्ली-आगरा\tमुंबई-ठाणे\tचेन्नई-बेंगलुरु\tकोलकाता-दिल्ली"
         ),
         label_visibility="collapsed",
     )
@@ -93,21 +95,34 @@ if parse_btn or (post_btn and raw_text):
         st.session_state.pop("questions", None)
         with col_preview:
             st.error(
-                "❌ Could not parse. Make sure each line follows:\n\n"
-                "`Question | Opt1 | Opt2 | Opt3 | Opt4 | AnswerNum`"
+                "❌ Could not parse.\n\n"
+                "**Pipe format:** `Question | A | B | C | D | 2`\n\n"
+                "**Tab format:** `Question\\tA\\tB\\tC\\tD` (no answer column)"
             )
 
 # ── Preview ───────────────────────────────────────────────────────────────────
 questions = st.session_state.get("questions")
 
+needs_answer = questions and any(not q.get("answer_given") for q in questions)
+
 with col_preview:
     if questions:
         st.subheader(f"👁 Preview — {len(questions)} question(s)")
+        if needs_answer:
+            st.warning("⚠️ No answer column detected — select the correct answer for each question below.")
         for i, q in enumerate(questions, start=1):
-            with st.expander(f"Q{i}. {q['question'][:90]}", expanded=(i == 1)):
-                for j, opt in enumerate(q["options"]):
-                    icon = "✅" if j == q["correct_option_id"] else "◻"
-                    st.markdown(f"{icon} **{chr(65+j)}.** {opt}")
+            with st.expander(f"Q{i}. {q['question'][:90]}", expanded=True):
+                if q.get("answer_given"):
+                    for j, opt in enumerate(q["options"]):
+                        icon = "✅" if j == q["correct_option_id"] else "◻"
+                        st.markdown(f"{icon} **{chr(65+j)}.** {opt}")
+                else:
+                    st.radio(
+                        "Correct answer:",
+                        options=q["options"],
+                        key=f"answer_{i}",
+                        index=0,
+                    )
     elif not parse_btn and not post_btn:
         st.info("Paste questions on the left and click **Parse & Preview**.")
 
@@ -120,13 +135,24 @@ if post_btn:
     else:
         total_q = len(questions)
 
+        # Apply user-selected answers for questions without an answer column
+        final_questions = []
+        for i, q in enumerate(questions, start=1):
+            q_copy = dict(q)
+            if not q.get("answer_given"):
+                selected = st.session_state.get(f"answer_{i}", q["options"][0])
+                idx = q["options"].index(selected) if selected in q["options"] else 0
+                q_copy["correct_option_id"] = idx
+                q_copy["explanation"] = f"✅ सही उत्तर: {q['options'][idx]}"
+            final_questions.append(q_copy)
+
         for name in selected_channels:
             chat_id = CHANNELS[name]
             st.subheader(f"📢 {name}")
 
-            slots = [st.empty() for _ in questions]
+            slots = [st.empty() for _ in final_questions]
 
-            for i, q in enumerate(questions, start=1):
+            for i, q in enumerate(final_questions, start=1):
                 slots[i - 1].info(f"⏳ Q{i}/{total_q} — posting…")
                 numbered = f"Q{i}/{total_q}. {q['question']}"
                 result = post_poll(chat_id, numbered, q["options"], q["correct_option_id"], q["explanation"])
