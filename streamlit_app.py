@@ -66,15 +66,18 @@ for name in list(channels.keys()):
 
 # Add channel form
 with st.sidebar.expander("➕ Add Channel"):
+    pin      = st.text_input("PIN", type="password", placeholder="Enter PIN")
     new_name = st.text_input("Display name", placeholder="📗 My Channel")
     new_id   = st.text_input("Chat ID or @username", placeholder="-1001234567890 or @mychannel")
     if st.button("Add", use_container_width=True):
-        if new_name.strip() and new_id.strip():
+        if pin != "1618":
+            st.error("❌ Wrong PIN.")
+        elif not new_name.strip() or not new_id.strip():
+            st.warning("Fill in both fields.")
+        else:
             channels[new_name.strip()] = new_id.strip()
             st.success(f"Added: {new_name.strip()}")
             st.rerun()
-        else:
-            st.warning("Fill in both fields.")
 
 st.sidebar.markdown("---")
 selected_channels = st.sidebar.multiselect(
