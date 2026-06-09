@@ -27,11 +27,10 @@ def split_row(line: str, delimiter: str) -> List[str]:
 
 def parse_csv_quiz(text: str) -> Optional[List[dict]]:
     """
-    Parse pipe/tab/comma-separated quiz text into a list of question dicts.
-
-    Supports two layouts:
-      WITH answer col:    Question | A | B | C | D | 2
-      WITHOUT answer col: Question | A | B | C | D      (answer_given=False)
+    Parse pipe or tab separated quiz text.
+    Format: Question | A | B | C | D | 2   (pipe)
+            Question\tA\tB\tC\tD\t2        (tab)
+    Last column is always the answer (1-4 or A-D).
     """
     text_clean = text.strip()
     if not text_clean:
@@ -62,42 +61,34 @@ def parse_csv_quiz(text: str) -> Optional[List[dict]]:
     if not data_rows:
         return None
 
-    # Detect layout from the first data row
-    first_data = data_rows[0]
-    has_answer_col = len(first_data) >= 3 and is_answer_cell(first_data[-1])
+    # Validate that last column looks like an answer
+    if not is_answer_cell(data_rows[0][-1]):
+        return None
 
     questions = []
     for row in data_rows:
-        if has_answer_col:
-            if len(row) < 3:
-                continue
-            question = row[0]
-            options  = [o for o in row[1:-1] if o]
-            ans_raw  = row[-1].upper()
-            if not question or not options:
-                continue
-            correct_option_id = 0
-            if ans_raw.isdigit():
-                correct_option_id = max(0, int(ans_raw) - 1)
-            elif len(ans_raw) == 1 and ans_raw.isalpha():
-                correct_option_id = ord(ans_raw) - ord('A')
-            correct_option_id = min(correct_option_id, len(options) - 1)
-            answer_given = True
-        else:
-            if len(row) < 2:
-                continue
-            question = row[0]
-            options  = [o for o in row[1:] if o]
-            if not question or not options:
-                continue
-            correct_option_id = 0
-            answer_given = False
+        if len(row) < 3:
+            continue
+
+        question = row[0]
+        options  = [o for o in row[1:-1] if o]
+        ans_raw  = row[-1].upper()
+
+        if not question or not options:
+            continue
+
+        correct_option_id = 0
+        if ans_raw.isdigit():
+            correct_option_id = max(0, int(ans_raw) - 1)
+        elif len(ans_raw) == 1 and ans_raw.isalpha():
+            correct_option_id = ord(ans_raw) - ord('A')
+
+        correct_option_id = min(correct_option_id, len(options) - 1)
 
         questions.append({
             "question":          question,
             "options":           options,
             "correct_option_id": correct_option_id,
-            "answer_given":      answer_given,
             "explanation":       f"✅ सही उत्तर: {options[correct_option_id]}",
         })
 

@@ -10,8 +10,6 @@ from quiz_parser import parse_csv_quiz
 load_dotenv()
 
 # ── Config ────────────────────────────────────────────────────────────────────
-# Local: set TELEGRAM_TOKEN in .env
-# Streamlit Cloud: set it in App Settings → Secrets
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN") or st.secrets.get("TELEGRAM_TOKEN", "")
 
 CHANNELS = {
@@ -39,9 +37,6 @@ def post_poll(chat_id: str, question: str, options: list, correct_option_id: int
     )
     return resp.json()
 
-
-
-
 # ── Page config ───────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="Quiz Poll Creator",
@@ -50,9 +45,9 @@ st.set_page_config(
 )
 
 st.title("🎯 Quiz Poll Creator")
-st.caption("Paste pipe-separated questions → preview → post directly to your Telegram channels.")
+st.caption("Paste questions → preview → post directly to your Telegram channels.")
 
-# ── Sidebar: channel picker ───────────────────────────────────────────────────
+# ── Sidebar ───────────────────────────────────────────────────────────────────
 st.sidebar.header("📢 Channels")
 selected_channels = st.sidebar.multiselect(
     "Post to:",
@@ -72,9 +67,9 @@ delay_sec = st.sidebar.slider(
 
 st.sidebar.markdown("---")
 st.sidebar.markdown(
-    "**With answer:**\n```\nQuestion | A | B | C | D | 2\n```\n"
-    "**Without answer** (tab-separated):\n```\nQuestion\tA\tB\tC\tD\n```\n"
-    "One question per line."
+    "**Pipe separated:**\n```\nQuestion | A | B | C | D | 2\n```\n"
+    "**Tab separated:**\n```\nQuestion  A  B  C  D  2\n```\n"
+    "Last column = answer (1–4 or A–D). One question per line."
 )
 
 # ── Main: paste area ──────────────────────────────────────────────────────────
@@ -86,10 +81,10 @@ with col_input:
         label="Questions",
         height=320,
         placeholder=(
-            "With answer (pipe):\n"
+            "Pipe format:\n"
             "India's capital? | Mumbai | Delhi | Chennai | Kolkata | 2\n\n"
-            "Without answer (tab):\n"
-            "पहली रेल किनके बीच चली?\tदिल्ली-आगरा\tमुंबई-ठाणे\tचेन्नई-बेंगलुरु\tकोलकाता-दिल्ली"
+            "Tab format:\n"
+            "पहली रेल किनके बीच चली?\tदिल्ली-आगरा\tमुंबई-ठाणे\tचेन्नई-बेंगलुरु\tकोलकाता-दिल्ली\t2"
         ),
         label_visibility="collapsed",
     )
@@ -107,33 +102,22 @@ if parse_btn or (post_btn and raw_text):
         with col_preview:
             st.error(
                 "❌ Could not parse.\n\n"
-                "**Pipe format:** `Question | A | B | C | D | 2`\n\n"
-                "**Tab format:** `Question\\tA\\tB\\tC\\tD` (no answer column)"
+                "**Pipe:** `Question | A | B | C | D | 2`\n\n"
+                "**Tab:** `Question\\tA\\tB\\tC\\tD\\t2`\n\n"
+                "Last column must be the answer (1–4 or A–D)."
             )
 
 # ── Preview ───────────────────────────────────────────────────────────────────
 questions = st.session_state.get("questions")
 
-needs_answer = questions and any(not q.get("answer_given") for q in questions)
-
 with col_preview:
     if questions:
         st.subheader(f"👁 Preview — {len(questions)} question(s)")
-        if needs_answer:
-            st.warning("⚠️ No answer column detected — select the correct answer for each question below.")
         for i, q in enumerate(questions, start=1):
-            with st.expander(f"Q{i}. {q['question'][:90]}", expanded=True):
-                if q.get("answer_given"):
-                    for j, opt in enumerate(q["options"]):
-                        icon = "✅" if j == q["correct_option_id"] else "◻"
-                        st.markdown(f"{icon} **{chr(65+j)}.** {opt}")
-                else:
-                    st.radio(
-                        "Correct answer:",
-                        options=q["options"],
-                        key=f"answer_{i}",
-                        index=0,
-                    )
+            with st.expander(f"Q{i}. {q['question'][:90]}", expanded=(i == 1)):
+                for j, opt in enumerate(q["options"]):
+                    icon = "✅" if j == q["correct_option_id"] else "◻"
+                    st.markdown(f"{icon} **{chr(65+j)}.** {opt}")
     elif not parse_btn and not post_btn:
         st.info("Paste questions on the left and click **Parse & Preview**.")
 
@@ -146,28 +130,16 @@ if post_btn:
     else:
         total_q = len(questions)
 
-        # Apply user-selected answers for questions without an answer column
-        final_questions = []
-        for i, q in enumerate(questions, start=1):
-            q_copy = dict(q)
-            if not q.get("answer_given"):
-                selected = st.session_state.get(f"answer_{i}", q["options"][0])
-                idx = q["options"].index(selected) if selected in q["options"] else 0
-                q_copy["correct_option_id"] = idx
-                q_copy["explanation"] = f"✅ सही उत्तर: {q['options'][idx]}"
-            final_questions.append(q_copy)
-
         for name in selected_channels:
             chat_id = CHANNELS[name]
             st.subheader(f"📢 {name}")
 
-            slots = [st.empty() for _ in final_questions]
+            slots = [st.empty() for _ in questions]
 
-            for i, q in enumerate(final_questions, start=1):
+            for i, q in enumerate(questions, start=1):
                 slots[i - 1].info(f"⏳ Q{i}/{total_q} — posting…")
                 numbered = f"Q{i}/{total_q}. {q['question']}"
 
-                # Auto-retry once on rate limit (429)
                 result = post_poll(chat_id, numbered, q["options"], q["correct_option_id"], q["explanation"])
                 if not result.get("ok") and result.get("error_code") == 429:
                     retry_after = result.get("parameters", {}).get("retry_after", 5)
