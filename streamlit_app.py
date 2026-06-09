@@ -61,8 +61,24 @@ for name in list(channels.keys()):
     c1, c2 = st.sidebar.columns([5, 1])
     c1.markdown(f"**{name}**  \n`{channels[name]}`")
     if c2.button("🗑", key=f"del_{name}", help=f"Remove {name}"):
-        del channels[name]
-        st.rerun()
+        st.session_state[f"confirm_del_{name}"] = True
+
+# Confirm delete with PIN
+for name in list(channels.keys()):
+    if st.session_state.get(f"confirm_del_{name}"):
+        st.sidebar.markdown(f"**Remove** `{name}`?")
+        del_pin = st.sidebar.text_input("Enter PIN to confirm", type="password", key=f"pin_del_{name}")
+        c1, c2 = st.sidebar.columns(2)
+        if c1.button("Confirm", key=f"yes_del_{name}", use_container_width=True):
+            if del_pin == "1618":
+                del channels[name]
+                st.session_state.pop(f"confirm_del_{name}", None)
+                st.rerun()
+            else:
+                st.sidebar.error("❌ Wrong PIN.")
+        if c2.button("Cancel", key=f"no_del_{name}", use_container_width=True):
+            st.session_state.pop(f"confirm_del_{name}", None)
+            st.rerun()
 
 # Add channel form
 with st.sidebar.expander("➕ Add Channel"):
