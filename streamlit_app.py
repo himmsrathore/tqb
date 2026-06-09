@@ -39,16 +39,6 @@ def post_poll(chat_id: str, question: str, options: list, correct_option_id: int
     return resp.json()
 
 
-def post_questions_to_channel(questions: list, chat_id: str) -> list[str]:
-    """Returns list of error strings (empty = all good)."""
-    errors = []
-    total = len(questions)
-    for i, q in enumerate(questions, start=1):
-        numbered = f"Q{i}/{total}. {q['question']}"
-        result = post_poll(chat_id, numbered, q["options"], q["correct_option_id"], q["explanation"])
-        if not result.get("ok"):
-            errors.append(f"Q{i}: {result.get('description', 'unknown error')}")
-    return errors
 
 
 # ── Page config ───────────────────────────────────────────────────────────────
@@ -128,25 +118,19 @@ if post_btn:
     elif not selected_channels:
         st.warning("⚠️ Select at least one channel in the sidebar.")
     else:
-        progress = st.progress(0, text="Starting…")
-        results  = {}
+        total_q = len(questions)
 
-        for idx, name in enumerate(selected_channels):
+        for name in selected_channels:
             chat_id = CHANNELS[name]
-            progress.progress(
-                (idx) / len(selected_channels),
-                text=f"Posting to {name}…",
-            )
-            errors = post_questions_to_channel(questions, chat_id)
-            results[name] = errors
+            st.subheader(f"📢 {name}")
 
-        progress.progress(1.0, text="Done!")
+            slots = [st.empty() for _ in questions]
 
-        st.subheader("📊 Results")
-        for name, errors in results.items():
-            if not errors:
-                st.success(f"✅ {name} — all {len(questions)} poll(s) posted!")
-            else:
-                st.error(f"❌ {name} — {len(errors)} error(s):")
-                for err in errors:
-                    st.code(err)
+            for i, q in enumerate(questions, start=1):
+                slots[i - 1].info(f"⏳ Q{i}/{total_q} — posting…")
+                numbered = f"Q{i}/{total_q}. {q['question']}"
+                result = post_poll(chat_id, numbered, q["options"], q["correct_option_id"], q["explanation"])
+                if result.get("ok"):
+                    slots[i - 1].success(f"✅ Q{i}/{total_q}. {q['question'][:70]}")
+                else:
+                    slots[i - 1].error(f"❌ Q{i}/{total_q}. {q['question'][:50]} — {result.get('description', 'unknown error')}")
