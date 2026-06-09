@@ -1,4 +1,5 @@
 import os
+import time
 
 import requests
 import streamlit as st
@@ -57,6 +58,16 @@ selected_channels = st.sidebar.multiselect(
     "Post to:",
     options=list(CHANNELS.keys()),
     default=[list(CHANNELS.keys())[0]],
+)
+
+st.sidebar.markdown("---")
+delay_sec = st.sidebar.slider(
+    "⏱ Delay between polls (seconds)",
+    min_value=0.5,
+    max_value=5.0,
+    value=1.5,
+    step=0.5,
+    help="Telegram allows ~1 msg/sec. Use 1.5s for safety, higher for large batches.",
 )
 
 st.sidebar.markdown("---")
@@ -155,8 +166,19 @@ if post_btn:
             for i, q in enumerate(final_questions, start=1):
                 slots[i - 1].info(f"⏳ Q{i}/{total_q} — posting…")
                 numbered = f"Q{i}/{total_q}. {q['question']}"
+
+                # Auto-retry once on rate limit (429)
                 result = post_poll(chat_id, numbered, q["options"], q["correct_option_id"], q["explanation"])
+                if not result.get("ok") and result.get("error_code") == 429:
+                    retry_after = result.get("parameters", {}).get("retry_after", 5)
+                    slots[i - 1].warning(f"⏳ Q{i}/{total_q} — rate limited, waiting {retry_after}s…")
+                    time.sleep(retry_after)
+                    result = post_poll(chat_id, numbered, q["options"], q["correct_option_id"], q["explanation"])
+
                 if result.get("ok"):
                     slots[i - 1].success(f"✅ Q{i}/{total_q}. {q['question'][:70]}")
                 else:
                     slots[i - 1].error(f"❌ Q{i}/{total_q}. {q['question'][:50]} — {result.get('description', 'unknown error')}")
+
+                if i < total_q:
+                    time.sleep(delay_sec)
