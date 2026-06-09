@@ -12,7 +12,7 @@ load_dotenv()
 # ── Config ────────────────────────────────────────────────────────────────────
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN") or st.secrets.get("TELEGRAM_TOKEN", "")
 
-CHANNELS = {
+DEFAULT_CHANNELS = {
     "🚂 Daily Railway Quiz": "-1003996251605",
     "📘 Test Sarthi":         "@testsarthi1234",
     "📗 Channel 3":           "@channel3username",
@@ -47,12 +47,40 @@ st.set_page_config(
 st.title("🎯 Quiz Poll Creator")
 st.caption("Paste questions → preview → post directly to your Telegram channels.")
 
+# ── Channels (session state) ──────────────────────────────────────────────────
+if "channels" not in st.session_state:
+    st.session_state["channels"] = dict(DEFAULT_CHANNELS)
+
+channels = st.session_state["channels"]
+
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 st.sidebar.header("📢 Channels")
+
+# List channels with remove button
+for name in list(channels.keys()):
+    c1, c2 = st.sidebar.columns([5, 1])
+    c1.markdown(f"**{name}**  \n`{channels[name]}`")
+    if c2.button("🗑", key=f"del_{name}", help=f"Remove {name}"):
+        del channels[name]
+        st.rerun()
+
+# Add channel form
+with st.sidebar.expander("➕ Add Channel"):
+    new_name = st.text_input("Display name", placeholder="📗 My Channel")
+    new_id   = st.text_input("Chat ID or @username", placeholder="-1001234567890 or @mychannel")
+    if st.button("Add", use_container_width=True):
+        if new_name.strip() and new_id.strip():
+            channels[new_name.strip()] = new_id.strip()
+            st.success(f"Added: {new_name.strip()}")
+            st.rerun()
+        else:
+            st.warning("Fill in both fields.")
+
+st.sidebar.markdown("---")
 selected_channels = st.sidebar.multiselect(
     "Post to:",
-    options=list(CHANNELS.keys()),
-    default=[list(CHANNELS.keys())[0]],
+    options=list(channels.keys()),
+    default=[list(channels.keys())[0]] if channels else [],
 )
 
 st.sidebar.markdown("---")
@@ -131,7 +159,7 @@ if post_btn:
         total_q = len(questions)
 
         for name in selected_channels:
-            chat_id = CHANNELS[name]
+            chat_id = channels[name]
             st.subheader(f"📢 {name}")
 
             slots = [st.empty() for _ in questions]
